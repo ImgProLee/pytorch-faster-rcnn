@@ -24,7 +24,7 @@ from scipy.misc import imread    #图像相关的io操作
 # from roi_data_layer.roibatchLoader import roibatchLoader
 from lib.model.utils.config import cfg, cfg_from_file   #参数配置对象train、test……
 from lib.model.utils.blob import im_list_to_blob
-from lib.model.faster_rcnn import vgg16
+from lib.model.faster_rcnn.vgg16 import vgg16
 from lib.model.utils.net_utils import save_net, load_net, vis_detections
 from lib.model.rpn.bbox_transform import clip_boxes
 from lib.model.nms.nms_wrapper import nms
@@ -55,7 +55,8 @@ def parse_args():
     parse.add_argument('--checkepoch',dest='checkepoch',help='checkepoch to load model',default=1,type=int)
     parse.add_argument('--checkpoint',dest='checkpoint',help='checkpoint to load model',default=10021,type=int)
     parse.add_argument('--bs',dest='batch_size',help='batch_size',default=1,type=int)
-
+    parse.add_argument('--cag', dest='class_agnostic', help='whether perform class_agnostic bbox regression', action='store_true')
+    parse.add_argument('--webcam_num', dest='webcam_num', help='webcam ID number', default=-1, type=int)
     args = parse.parse_args()
     return args
 
@@ -76,7 +77,6 @@ def _get_image_blob(im):
     im_size_max = np.max(im_shape[0:2])
     processed_ims = []
     im_scale_factors = []
-
     for target_size in cfg.TEST.SCALES:
         # 限制最小边为600，最大边为1000，对于输入图像优先考虑最大边的限制
         # 输入图像的大小是：375*500*3，则resize后的图像大小为：600*800*3
@@ -89,7 +89,6 @@ def _get_image_blob(im):
         im = cv2.resize(im_orig, None, None, fx=im_scale,fy=im_scale,interpolation=cv2.INTER_LINEAR)
         im_scale_factors.append(im_scale)
         processed_ims.append(im)
-
     #Create a blob to hold the input images
     blob = im_list_to_blob(processed_ims)
     return blob, np.array(im_scale_factors)
@@ -127,7 +126,7 @@ if __name__ == '__main__':
                                'sofa', 'train', 'tvmonitor'])
     # initlize the network here
     fasterRCNN = vgg16(pascal_classes, pretrained = False, class_agnostic = args.class_agnostic)
-    fasterRCNN.create_architecture()
+    fasterRCNN.creat_architecture()
 
     print("load checkpoint %s" % (load_name))
     if args.cuda > 0:
