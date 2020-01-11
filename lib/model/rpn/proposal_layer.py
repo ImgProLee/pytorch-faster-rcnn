@@ -50,7 +50,7 @@ class _ProposalLayer(nn.Module):
         # input输入形式为tuple = (rpn_cls_prob.data, rpn_bbox_pred.data, im_info, cfg_key)
         # 0-8为anchor的背景得分, 9-17为anchor的前景得分
         scores = input[0][:, self._num_anchors:, :, :]  # [1,9,53,37]
-        bbox_deltas = input[1]  # [1,36,63,37]
+        bbox_deltas = input[1]  # [1,36,53,37]
         im_info = input[2]
         cfg_key = input[3]
 
@@ -61,20 +61,19 @@ class _ProposalLayer(nn.Module):
 
         batch_size = bbox_deltas.size(0)  # batch_size = 1
 
-        feat_height, feat_width = scores.size(2), scores.size(3)
+        feat_height, feat_width = scores.size(2), scores.size(3)  # 53,37
         shift_x = np.arange(0, feat_width) * self._feat_stride
         shift_y = np.arange(0, feat_height) * self._feat_stride
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)  # 从坐标向量中返回坐标矩阵,元素交叉
-        # torch.from_numpy将np数据转化为tensor，将rensor转化为np：tensor.numpy()
+        # torch.from_numpy将np数据转化为tensor，将tensor转化为np：tensor.numpy()
         # ravel()函数与flatten()函数功能类似，将多维数组降一维，np.flatten返回拷贝，不会影响原始数据，np.ravel返回视图view
         # np.vstack按垂直方向（行顺序）堆叠数组构成一个新的数组
-        # shift_x,shift_y为[37,57]矩阵，展平后堆叠再转置，得到[1961,3]tensor
+        # shift_x,shift_y为[37,53]矩阵，展平后堆叠再转置，得到[1961,3]tensor
         shifts = torch.from_numpy(np.vstack((shift_x.ravel(),shift_y.ravel(),shift_x.ravel(),shift_y.ravel())).transpose())
         shifts = shifts.contiguous().type_as(scores).float()  #contiguous()把tensor变为连续分布形式
 
         A = self._num_anchors
         K = shifts.size(0)
-
         # 9个anchor，每个包含四个坐标偏移值，宽高中心点坐标
         self._anchors = self._anchors.type_as(scores)  # [9,4]
         # anchors = self._anchors.view(1, A, 4) + shifts.view(1, K, 4).permute(1, 0, 2).contiguous
@@ -83,18 +82,14 @@ class _ProposalLayer(nn.Module):
 
         # Transpose and reshape predicted bbox transformations to get them
         # into the same order as the anchor
-
-        bbox_deltas = bbox_deltas.permute(0,2,3,1).contiguous()  # [1, 63, 37, 36]
+        bbox_deltas = bbox_deltas.permute(0,2,3,1).contiguous()  # [1, 53, 37, 36]
         bbox_deltas = bbox_deltas.view(batch_size, -1, 4)  # [1, 17649, 4]
-
         # Same story for the score
         scores = scores.permute(0,2,3,1).contiguous()  # permute将维度换位
         scores = scores.view(batch_size, -1)    # [1, 17649]
-
         # Convert anchors into proposals via bbox transformations
         # 根据anchor和偏移量计算proposals,delta表示偏移量，返回左上和右下顶点的坐标(x1,y1,x2,y2)
         proposals = bbox_transform_inv(anchors, bbox_deltas, batch_size)
-
         # clip predicted boxes to image，将proposals限制在图片范围内，超出边界，则将边界赋值
         proposals = clip_boxes(proposals, im_info, batch_size)
         # proposals = clip_boxes_batch(proposals, im_info, batch_size)
@@ -121,7 +116,6 @@ class _ProposalLayer(nn.Module):
             # 从[1,17949,4]转换到[17649,4],从[1, 17649]转换到[17649]
             proposals_single = proposals_keep[i]
             scores_single = scores_keep[i]
-
             # # 4. sort all (proposal, score) pairs by score from highest to lowest
             # # 5. take top pre_nms_topN (e.g. 6000)
             order_single = order[i]
@@ -130,7 +124,7 @@ class _ProposalLayer(nn.Module):
             if pre_nms_topN > 0 and pre_nms_topN < scores_keep.numel():
                 order_single = order_single[:pre_nms_topN]  # 测试阶段取前6000个得分的索引
 
-            # 取前300的索引对应的区域和得分,[6000,4],[6000,1]，这里会重新生成proposals_single的下标0：5999
+            # 取前6000的索引对应的区域和得分,[6000,4],[6000,1]，这里会重新生成proposals_single的下标0：5999
             proposals_single = proposals_single[order_single, :]
             scores_single = scores_single[order_single].view(-1,1)
 

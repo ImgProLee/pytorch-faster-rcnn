@@ -8,7 +8,7 @@ from lib.model.roi_pooling.modules.roi_pool import _RoIPooling
 from lib.model.roi_crop.modules.roi_crop import _RoICrop
 from lib.model.roi_align.modules.roi_align import RoIAlignAvg
 from lib.model.rpn.proposal_target_layer_cascade import _ProposalTargetLayer
-from lib.model.utils.net_utils import _smooth_l1_loss, _crp_pool_layer, _affine_grid_gen, _affine_theta
+from lib.model.utils.net_utils import _smooth_l1_loss
 
 class _fasterRCNN(nn.Module):
     """faster RCNN"""
@@ -20,17 +20,16 @@ class _fasterRCNN(nn.Module):
         # loss
         self.RCNN_loss_cls = 0
         self.RCNN_loss_bbox = 0
-
         #define rpn
         self.RCNN_rpn = _RPN(self.dout_base_model)  # self.dout_base_model = 512
         self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)
         # self.RCNN_roi_pool = _RoIPooling(cfg.POOLING_SIZE, cfg.POOLING_SIZE, 1.0/16.0)
         self.RCNN_roi_align = RoIAlignAvg(cfg.POOLING_SIZE, cfg.POOLING_SIZE, 1.0/16.0)
-
         self.grid_size = cfg.POOLING_SIZE * 2 if cfg.CROP_RESIZE_WITH_MAX_POOL else cfg.POOLING_SIZE
         self.RCNN_roi_crop = _RoICrop()
 
     def forward(self, im_data, im_info, gt_boxes, num_boxes):
+        # shape:  im_data [1,c,w,h]  im_info[1,3]   gt_boxes[1,20,5]  num_boxes[1]
         batch_size = im_data.size(0)
         # im_data 为原始图像blob[1,3,850,600]
 
@@ -40,7 +39,6 @@ class _fasterRCNN(nn.Module):
 
         # feed image data to base model to obtain base feature map
         base_feat = self.RCNN_base(im_data)
-
         # feed base feature map to RPN to obtain rois
         rois, rpn_loss_cls, rpn_loss_bbox = self.RCNN_rpn(base_feat, im_info, gt_boxes, num_boxes)
 
@@ -62,12 +60,11 @@ class _fasterRCNN(nn.Module):
             rpn_loss_bbox = 0
 
         rois = Variable(rois)
-        # 测试阶段rois格式为[1,300,5]维度为5，最后一列全是0，
+        # 测试阶段rois格式为[1,300,5]维度为5，第一列全是0，
         # 并不表示roi的标签，仅仅是batch的index标识。gt_boxes的维度是(x,5)，x是object的数量。
         # do roi pooling based on predicted rois
         # POOLING_MODE = align
         pooled_feat = self.RCNN_roi_align(base_feat, rois.view(-1, 5))
-
         #feed pooled feature to top model
         pooled_feat = self.head_to_tail(pooled_feat)
 
@@ -82,9 +79,7 @@ class _fasterRCNN(nn.Module):
          # compute object classification probability
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, 1)
-
         # 测试阶段cls_score为[300, 21], bbox_pred为[300, 84]
-
         RCNN_loss_cls = 0
         RCNN_loss_bbox = 0
 

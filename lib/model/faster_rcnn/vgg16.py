@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from model.faster_rcnn.faster_rcnn import _fasterRCNN
+from lib.model.faster_rcnn.faster_rcnn import _fasterRCNN
 
 class vgg16(_fasterRCNN):
     def __init__(self, classes, pretrained=False, class_agnostic=False):
@@ -11,7 +11,6 @@ class vgg16(_fasterRCNN):
         self.dout_base_model = 512
         self.pretrained = pretrained
         self.class_agnostic = class_agnostic
-
         # 要继承父类的属性，需要在子类中调用父类的构造函数
         _fasterRCNN.__init__(self, classes, class_agnostic)
 
@@ -21,20 +20,19 @@ class vgg16(_fasterRCNN):
             print("Loading pretrained weights from %s" %(self.model_path))
             state_dict = torch.load(self.model_path)  #torch.load返回的是一个OrderedDict.
             # 加载模型时一般用 model.load_state_dict(torch.load(model_path))
-            # equential定义的网络的模型参数不能与属性一层层”定义的网络直接对应
+            # Sequential定义的网络的模型参数不能与属性一层层”定义的网络直接对应
             # 这里k表示层，如features.0.weight、features.0.bias，v表示tensor参数
             # .state_dict()表示模型的参数，.load_state_dict()表示加载模型参数。
             vgg.load_state_dict({k:v for k,v in state_dict.items() if k in vgg.state_dict()})
 
         vgg.classifier = nn.Sequential(*list(vgg.classifier._modules.values())[:-1])
-
         # not using the last maxpool layer，舍弃最后一个池化层，将前面的层赋给RCNN_base
         self.RCNN_base = nn.Sequential(*list(vgg.features._modules.values())[:-1])
 
         # fix the layers before conv3:
         for layer in range(10):
             for p in self.RCNN_base[layer].parameters():
-                p.require_grad = False
+                p.requires_grad = False
 
         #舍弃掉最后一个分类层的全连接层
         self.RCNN_top = vgg.classifier
